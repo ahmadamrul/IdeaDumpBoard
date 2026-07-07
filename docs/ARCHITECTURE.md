@@ -44,9 +44,12 @@ useBoards (debounced) → localStorage.setItem('mpp:boards', ...)
 
 Key architectural decision: **all element mutations flow through a single
 `commit()` function in `App.jsx`.** This guarantees every mutating action
-(drag, resize, rotate, recolor, delete, layer reorder, paste, group move)
-gets recorded onto the undo stack exactly once, as a single step — there is
-no code path that mutates board elements without going through `commit`.
+(drag, resize, rotate, recolor, delete, layer reorder, paste, duplicate,
+lock/unlock, comment add/edit/hide/delete, group move) gets recorded onto
+the undo stack exactly once, as a single step — there is no code path that
+mutates board elements without going through `commit`. `useHistory` also
+maintains a parallel redo stack that's cleared on the next `record()`, same
+as standard editor undo/redo semantics.
 
 ## Component Tree
 
@@ -54,13 +57,19 @@ no code path that mutates board elements without going through `commit`.
 App
 ├── Sidebar               (board list, create/rename/delete, collapse)
 ├── Toolbar                (add text/image, formatting, layers, zoom, grid, export/import)
-├── Canvas                  (Konva Stage/Layer — selection, transform, pan/zoom)
+├── Canvas                  (Konva Stage/Layer — selection, transform, pan/zoom, snap-to-grid)
 │   ├── URLImage (per image element)
 │   ├── Konva.Text (per text element)
-│   ├── Konva.Transformer  (resize/rotate handles)
+│   ├── Konva.Label/Tag/Text (per attached comment, only if not hidden)
+│   ├── Konva.Transformer  (resize/rotate handles; skips locked elements)
 │   └── ContextMenu          (right-click menu, conditionally rendered)
 └── ConfirmDialog             (modal, conditionally rendered)
 ```
+
+Comments are not their own entry in `elements` — they're a `comment` field
+on an image/text element, rendered as a sibling Konva node next to it (see
+[DATABASE_SCHEMA.md](DATABASE_SCHEMA.md#comment-shape)). This is why they
+don't appear in the component tree as a distinct element type.
 
 ## State Ownership
 
@@ -75,8 +84,9 @@ component tree is shallow enough that prop drilling is simple and explicit):
 
 `Canvas.jsx` holds only **transient, canvas-local** UI state that doesn't
 need to persist or trigger undo history: the in-progress rubber-band
-selection rectangle, the active pan gesture, inline text-editing state, and
-the open context menu.
+selection rectangle, the active pan gesture, inline text-editing state,
+inline comment-editing state (including its live drag-resize width/height),
+and the open context menu.
 
 ## Why These Choices
 

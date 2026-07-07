@@ -9,13 +9,15 @@ modifying `src/`.
 ### `App.jsx`
 Root component. Owns all board/element state and every mutating action
 (`commit`, `updateElement`, `updateElements`, `moveLayer`, `deleteElements`,
-`resetSize`, `copySelected`/`pasteClipboard`, export/import). No props (it's
-the app root).
+`resetSize`, `toggleLock`, `duplicateSelected`, `copySelected`/
+`pasteClipboard`, `setComment`/`toggleCommentVisibility`/`deleteComment`,
+export/import). No props (it's the app root).
 
 ### `Canvas` — `components/Canvas.jsx`
 Renders the Konva `Stage`/`Layer` and owns all Konva-specific interaction
-logic (selection, drag, resize/rotate, pan/zoom, rubber-band select, group
-drag, inline text editing, context menu positioning).
+logic (selection, drag, resize/rotate, pan/zoom, snap-to-grid, rubber-band
+select, group drag, inline text editing, comment editing/resizing, context
+menu positioning).
 
 | Prop | Type | Description |
 | --- | --- | --- |
@@ -25,17 +27,26 @@ drag, inline text editing, context menu positioning).
 | `onSelectionChange` | `(ids: string[]) => void` | Called whenever the selection changes (click, shift-click, rubber-band, deselect). |
 | `onChange` | `(id: string, patch: object) => void` | Commit a patch to a single element (drag end, resize/rotate end, etc.). |
 | `onBatchChange` | `(patches: {id, ...}[]) => void` | Commit several elements' positions at once, as a single undo step (used for group drag). |
-| `showGrid` | `boolean` | Whether to render the background grid. |
+| `showGrid` | `boolean` | Whether to render the background grid; also gates snap-to-grid on drag/resize. |
 | `view` | `{ scale, x, y }` | Current pan/zoom transform. |
 | `onViewChange` | `(view) => void` | Called on wheel-zoom or pan-drag. |
 | `onLayer` | `(id, dir) => void` | `dir` is `'front' \| 'forward' \| 'backward' \| 'back'`. |
-| `onDeleteElement` | `(id: string) => void` | Delete a single element (right-click menu). |
+| `onDeleteElement` | `(ids: string[]) => void` | Delete one or more elements (right-click menu — acts on the whole selection if the clicked element is part of one). |
 | `onResetSize` | `(id: string) => void` | Reset an element back to its original width/height (or font size, for text). |
+| `onDuplicate` | `(ids: string[]) => void` | Duplicate the given elements, offset from the originals. |
+| `onToggleLock` | `(ids: string[]) => void` | Lock/unlock the given elements as a group (locks all if any are unlocked, else unlocks all). |
+| `onCommentChange` | `(id: string, patch: {text, width, height, fontSize}) => void` | Set/update the comment attached to element `id`. |
+| `onToggleComment` | `(id: string) => void` | Show/hide the comment attached to element `id`. |
+| `onDeleteComment` | `(id: string) => void` | Remove the comment attached to element `id` (leaves the element itself untouched). |
 
 Rotation reset is handled **internally** in `Canvas.jsx` (`resetRotation`),
 not via a prop, because it needs live Konva node geometry (actual rendered
 width/height) to recompute a position that keeps the shape's visual center
 fixed — see the code comment in `Canvas.jsx` for the trigonometry.
+
+Comment position/drag-sync is also internal (`syncCommentNode`,
+`startEditingComment`, `startCommentResize`) since it needs to read/write
+live Konva node geometry the same way.
 
 ### `URLImage` — `components/URLImage.jsx`
 Loads an `element.src` (data-URL) into an `HTMLImageElement` and renders it
@@ -48,7 +59,7 @@ Generic right-click menu, positioned absolutely at `{x, y}`.
 | Prop | Type | Description |
 | --- | --- | --- |
 | `x`, `y` | `number` | Position within the canvas wrapper (screen pixels). |
-| `items` | `{ label, icon, onClick, disabled? }[] \| { divider: true }[]` | Menu entries, in order. |
+| `items` | `{ label, icon, onClick, disabled? }[] \| { divider: true }[]` | Menu entries, in order. `icon` can be a string (emoji) or a JSX element (`Canvas.jsx` passes inline SVGs for the lock/comment/eye icons so they render consistently instead of relying on emoji fonts). |
 | `onClose` | `() => void` | Called after any item click, on outside click, or `Esc`. |
 
 ### `ConfirmDialog` — `components/ConfirmDialog.jsx`
@@ -77,10 +88,13 @@ Board list, collapse toggle, create/rename/delete.
 
 ### `Toolbar` — `components/Toolbar.jsx`
 Top bar: add text/image, color picker, text formatting, layer order,
-undo/delete/clear, grid toggle, zoom controls, export/import. Purely
+undo/redo/delete/clear, grid toggle, zoom controls, export/import. Purely
 presentational — every button calls a prop callback supplied by `App.jsx`.
 See the component source for the full prop list (it's long but each prop
-maps 1:1 to one visible button).
+maps 1:1 to one visible button). Lock, duplicate, and comment actions are
+deliberately **not** in the toolbar — they're right-click-only (see
+`Canvas.jsx`'s `ContextMenu` usage) to keep the toolbar from getting
+cluttered with actions that only make sense on a specific element.
 
 ## Hooks
 
@@ -99,15 +113,18 @@ Returns:
 ```
 
 ### `useHistory(boardId, applyElements)` — `hooks/useHistory.js`
-Per-board undo stack (max 50 snapshots), keyed by `boardId` so switching
-boards doesn't cross-contaminate history.
+Per-board undo **and redo** stacks (max 50 snapshots each), keyed by
+`boardId` so switching boards doesn't cross-contaminate history. Calling
+`record()` (i.e. any new mutation) clears the redo stack for that board —
+standard editor undo/redo semantics, not a separate "linear" history.
 
 Returns:
 ```
 {
-  record(elementsSnapshot),  // push a snapshot before a mutation
-  undo(),                     // pop the last snapshot and call applyElements(it)
-  clear(),                    // wipe history for the current board
+  record(elementsSnapshot),  // push a snapshot before a mutation; clears redo
+  undo(),                     // pop the last undo snapshot, push current state onto redo, apply it
+  redo(),                     // pop the last redo snapshot, push current state onto undo, apply it
+  clear(),                    // wipe both stacks for the current board
 }
 ```
 

@@ -12,11 +12,14 @@ your browser.
 - **Multi-select**: shift/ctrl-click, or drag a selection box over empty canvas
 - **Layer order**: right-click a shape, or use the toolbar (bring to front/back, forward/backward)
 - **Reset**: right-click → reset rotation or reset size back to original
-- **Grid**: optional snap-reference grid, toggle from the toolbar
+- **Lock elements**: right-click → Lock, prevents accidental drag/resize/rotate (and locks any attached comment too)
+- **Duplicate**: `Ctrl+D` or right-click → Duplicate, offsets the copy so it doesn't stack on the original
+- **Comments/annotations**: right-click an image or text → Add Comment. Renders as a sticky note to the object's right, always follows it when moved, resizable by dragging its edges/corner, and can be hidden/shown per comment — distinct from a plain text element
+- **Grid + snap-to-grid**: toggle the grid from the toolbar; dragging/resizing snaps to it while it's on
 - **Boards**: create / rename / delete, one per project (collapsible sidebar)
 - **Auto-save** to `localStorage` (debounced)
 - **Export/Import**: PNG snapshot + JSON data backup
-- **Undo** (`Ctrl+Z`), **Copy/Paste** (`Ctrl+C`/`Ctrl+V`), **Delete** (`Del`/`Backspace`)
+- **Undo/Redo** (`Ctrl+Z` / `Ctrl+Y` or `Ctrl+Shift+Z`), **Copy/Paste** (`Ctrl+C`/`Ctrl+V`), **Delete** (`Del`/`Backspace`)
 - Custom dark-themed confirm dialogs (no native browser popups)
 
 ## Keyboard & mouse shortcuts
@@ -25,16 +28,20 @@ your browser.
 | ------------------------ | -------------------------------------- |
 | Paste image               | `Ctrl+V` (from clipboard)              |
 | Copy / paste element(s)   | `Ctrl+C` / `Ctrl+V` (with a selection)  |
+| Duplicate selected         | `Ctrl+D`, or right-click → Duplicate   |
 | Delete selected           | `Del` / `Backspace`                    |
-| Undo                       | `Ctrl+Z`                               |
+| Undo / Redo                 | `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) |
 | Edit text                  | Double-click a text element            |
+| Add / edit a comment         | Right-click an image or text → Add/Edit Comment; double-click an existing comment |
+| Resize a comment             | Drag its right edge (width), bottom edge (height), or bottom-right corner (both) while editing |
+| Lock / unlock                | Right-click → Lock / Unlock            |
 | Rename board                | Double-click a board name in the sidebar |
 | Multi-select                | `Shift`/`Ctrl`+click, or drag over empty canvas |
 | Rotate                     | Drag the handle above a single selected element |
-| Resize                     | Drag a corner or side handle           |
+| Resize                     | Drag a corner or side handle (snaps to grid if it's on) |
 | Pan the canvas              | Right-click + hold + drag empty canvas, or middle-mouse drag |
 | Zoom                        | Mouse wheel, or `+`/`-` in the toolbar |
-| Right-click menu             | Right-click an element (layer order, reset, delete) |
+| Right-click menu             | Right-click an element (layer order, lock, duplicate, comment, reset, delete) |
 
 ## Getting started
 
@@ -55,15 +62,16 @@ npm run preview  # preview the build
 src/
   App.jsx                   # wiring: state, keyboard, paste/drop, export/import
   components/
-    Canvas.jsx              # Konva stage: selection, resize/rotate, pan/zoom, text editing
+    Canvas.jsx              # Konva stage: selection, resize/rotate, pan/zoom, snap-to-grid,
+                             # text editing, comment editing/resizing, lock enforcement
     URLImage.jsx             # loads a data-URL into a Konva image
-    ContextMenu.jsx           # right-click menu (layer order, reset, delete)
+    ContextMenu.jsx           # right-click menu (layer order, lock, duplicate, comment, reset, delete)
     ConfirmDialog.jsx          # styled replacement for window.confirm/alert
     Sidebar.jsx                # board list / create / rename / delete
     Toolbar.jsx                 # text formatting, layer order, grid, zoom, export/import
   hooks/
     useBoards.js              # board store + localStorage persistence
-    useHistory.js              # per-board undo stack
+    useHistory.js              # per-board undo/redo stacks
     useDialog.js                # promise-based confirm()/alert() replacement
   lib/
     storage.js                 # localStorage read/write helpers
@@ -85,7 +93,13 @@ Boards are stored under the key `mpp:boards`:
         "src": "data:image/webp;base64,...",
         "x": 0, "y": 0, "width": 400, "height": 300,
         "origWidth": 400, "origHeight": 300,
-        "rotation": 0
+        "rotation": 0,
+        "locked": false,
+        "comment": {
+          "text": "check this crop",
+          "hidden": false,
+          "width": 200, "height": 80, "fontSize": 14
+        }
       },
       {
         "id": "txt-1",
@@ -107,6 +121,13 @@ Boards are stored under the key `mpp:boards`:
 > transparency, or if the browser can't encode WebP) to keep localStorage's
 > ~5MB quota from filling up. For heavy use, add Firebase Storage later (see
 > below).
+
+> `locked` defaults to `false`/absent; when `true`, the element can't be
+> dragged, resized, rotated, or have its comment edited until unlocked.
+> `comment` is optional and only present once a comment has been added via
+> right-click → Add Comment — it's attached to its parent object (not a
+> standalone element), so its position is always derived from the parent's
+> `x`/`y`/`width` rather than stored independently.
 
 ## Deploy to Vercel
 
@@ -130,6 +151,4 @@ vercel --prod # production deploy
 ## Later / nice-to-have
 
 - Firebase Firestore + Storage backup (offload images out of localStorage)
-- Snap-to-grid (the grid is currently visual-only)
-- Redo (undo only goes one direction today)
-- Group/ungroup elements
+- Group/ungroup elements as a persistent unit (tried and reverted once already — see [ROADMAP.md](docs/ROADMAP.md))

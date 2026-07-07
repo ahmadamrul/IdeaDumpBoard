@@ -83,6 +83,5 @@ There is currently no automated test suite. Verify changes by:
    not-yet-declared variable builds fine but crashes on load).
 
 ## Git / Version Control
-This project currently has **no git repository initialized**. If you set one
-up, the usual `.gitignore` should exclude `node_modules/` and `dist/` at
-minimum.
+The project has a git repository with a `.gitignore` excluding
+`node_modules/` and `dist/`.

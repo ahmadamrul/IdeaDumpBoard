@@ -38,10 +38,11 @@ collaboration, no accounts, and no shared/multi-user state.
 
 ## Current Status
 **MVP, actively evolving.** The core whiteboard (canvas, boards, save/load,
-selection, resize/rotate, layering, copy/paste, undo, export/import) is
-implemented and usable day-to-day. See [FEATURES.md](FEATURES.md) for the
-detailed, up-to-date feature checklist and [ROADMAP.md](ROADMAP.md) for
-what's planned next.
+selection, resize/rotate, layering, lock, duplicate, comments/annotations,
+copy/paste, undo/redo, snap-to-grid, export/import) is implemented and
+usable day-to-day. See [FEATURES.md](FEATURES.md) for the detailed,
+up-to-date feature checklist and [ROADMAP.md](ROADMAP.md) for what's planned
+next.
 
 ## Team
 Solo developer (Ahmad), building this as a personal tool first — features

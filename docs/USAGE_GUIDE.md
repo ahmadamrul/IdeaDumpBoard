@@ -64,16 +64,52 @@ Two equivalent ways:
 - **Toolbar**: with something selected, use **⤒** (front) **↑** (forward)
   **↓** (backward) **⤓** (back).
 - **Right-click** an element directly for the same options in a context menu,
-  plus **Reset Rotation**, **Reset Size**, and **Delete**.
+  plus duplicate, lock, comment actions, **Reset Rotation**, **Reset Size**,
+  and **Delete**.
 
-## Copy, Paste, Undo, Delete
+## Copy, Paste, Duplicate, Undo/Redo, Delete
 - **`Ctrl+C`** copies the current selection into an in-app clipboard.
 - **`Ctrl+V`** pastes a duplicate, offset slightly from the original.
   (If your OS clipboard contains an actual image — e.g. a fresh screenshot —
   `Ctrl+V` pastes *that* instead, taking priority over the in-app clipboard.)
+- **`Ctrl+D`**, or right-click → **Duplicate**, makes an offset copy of the
+  current selection (single or multiple elements) in one step, without
+  touching the clipboard.
 - **`Ctrl+Z`** undoes the last action (move, resize, rotate, delete, color,
-  paste, layer change...). There is currently no redo.
+  paste, duplicate, lock, comment edit, layer change...). **`Ctrl+Y`** (or
+  `Ctrl+Shift+Z`) redoes it. Making a new change after undoing clears the
+  redo stack, same as most editors.
 - **`Del`** / **`Backspace`** deletes the current selection.
+
+## Locking Elements
+Right-click an element → **Lock** to prevent it from being accidentally
+dragged, resized, or rotated — useful once you've got something positioned
+exactly where you want it. Locked elements render slightly transparent so
+it's obvious at a glance. Right-click → **Unlock** to release it. Locking a
+multi-selection locks/unlocks all of them together. A locked element's
+comment (if it has one) also can't be opened for editing until unlocked.
+
+## Comments (Annotations)
+Comments are a distinct annotation type, separate from a plain text
+element — meant for notes *about* something on the board, not content on
+the board itself.
+- **Add**: right-click an image or text element → **Add Comment**, type your
+  note, then click elsewhere (or press `Enter`) to save. There's no toolbar
+  button for this — it only makes sense attached to an existing element.
+- **Position**: a comment always renders as a small amber sticky note to the
+  right of its object, and **follows it automatically** whenever the object
+  is moved — including as part of a group drag.
+- **Edit**: double-click an existing comment, or right-click its object →
+  **Edit Comment**.
+- **Resize**: while editing, drag the small handle on the comment's right
+  edge (width), bottom edge (height), or bottom-right corner (both at once).
+  Use the **A−**/**A+** buttons above the editor to change the text size
+  separately.
+- **Hide/show**: right-click the object → **Hide Comment**/**Show Comment**
+  (eye / eye-with-a-slash icon). Hiding just stops it from rendering — the
+  text isn't lost.
+- **Delete**: right-click the object → **Delete Comment**. This removes only
+  the comment, not the object it's attached to.
 
 ## Navigating the Canvas
 - **Zoom**: scroll the mouse wheel (zooms toward your cursor), or use the
@@ -81,8 +117,9 @@ Two equivalent ways:
 - **Pan**: right-click, hold, and drag on empty canvas — or drag with the
   middle mouse button. (A quick right-click *on an element*, without holding
   and dragging, opens its context menu instead.)
-- **Grid**: toggle the `# Grid` button in the toolbar for a visual alignment
-  reference (it's cosmetic only — elements don't snap to it).
+- **Grid**: toggle the `# Grid` button in the toolbar. While it's on, dragging
+  and resizing elements snaps to the grid lines; turn it off for free
+  positioning.
 
 ## Saving, Exporting, Importing
 - **Auto-save**: every change is saved to `localStorage` automatically

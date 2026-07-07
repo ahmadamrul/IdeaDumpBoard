@@ -39,12 +39,27 @@ summary of how the app evolved during initial development:
     dark-themed modal matching the rest of the UI.
 12. **Image compression** — pasted/uploaded images downscaled and re-encoded
     as WebP (falls back to PNG for transparency) to shrink localStorage/export size.
+13. **Redo** — `Ctrl+Y`/`Ctrl+Shift+Z`, backed by a parallel redo stack in
+    `useHistory` that clears on the next new mutation.
+14. **Snap-to-grid** — dragging and resizing now snaps to the grid while it's
+    toggled on, via a `dragBoundFunc` that converts screen↔world coordinates.
+15. **Lock elements** — right-click toggle; blocks drag/resize/rotate and
+    comment editing until unlocked, shown at reduced opacity.
+16. **Duplicate** — `Ctrl+D` or right-click, offset copy of the selection.
+17. **Group/ungroup (tried, then reverted)** — implemented as a persistent
+    `groupId` on elements with group-aware selection, then explicitly rolled
+    back at the requester's call that it was premature for current needs. Not
+    in the codebase today; see "Under Consideration" below if it comes back.
+18. **Comments/annotations** — right-click an image or text → Add Comment.
+    Deliberately *not* a standalone element or a toolbar button: it's a
+    `comment` field attached to its parent object, positioned relative to it
+    (always follows on drag/group-drag), independently resizable
+    (width/height via drag handles, font size via A−/A+), and can be
+    hidden/shown per comment. Visually distinct (amber speech-bubble) from
+    plain sticky-note-style text so the two don't get confused.
 
 ## Planned (Near-Term)
 These are concrete, scoped next steps — not speculative:
-- **Redo** — the undo stack currently only goes one direction.
-- **Snap-to-grid** — the grid is currently a visual reference only; elements
-  don't snap to it while dragging/resizing.
 - **Backfill `origWidth`/`origHeight` for older images** so "Reset Size"
   works universally, not just for images added after the feature existed.
 
@@ -56,7 +71,9 @@ These are concrete, scoped next steps — not speculative:
 - **More shape types** (rectangle, arrow, sticky note distinct from plain
   text) — not currently planned, would need real demand first.
 - **Group/ungroup** elements as a persistent unit (distinct from the
-  transient multi-selection that exists today).
+  transient multi-selection that exists today) — attempted once already (see
+  version history above) and reverted as premature; would need to be
+  revisited deliberately, not re-added incidentally.
 - **Search** across boards/elements, once the number of boards/elements
   makes that worth having.
 

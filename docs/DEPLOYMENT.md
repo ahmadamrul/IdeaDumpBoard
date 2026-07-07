@@ -8,8 +8,6 @@ can serve.
 
 ### Via the Vercel dashboard
 1. Push this project to a GitHub (or GitLab/Bitbucket) repository.
-   > Note: this project has no git repository initialized yet — run
-   > `git init` first if you haven't (see [DEVELOPMENT.md](DEVELOPMENT.md)).
 2. Go to [vercel.com](https://vercel.com) → **Add New → Project** → import the repo.
 3. Vercel auto-detects the Vite framework. Confirm the settings:
    - **Build command**: `npm run build`
