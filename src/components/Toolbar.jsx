@@ -5,6 +5,10 @@ export default function Toolbar({
   color,
   onColorChange,
   onAddText,
+  onAddSticky,
+  onAddFrame,
+  connecting,
+  onToggleConnect,
   onUploadClick,
   onDeleteSelected,
   onClear,
@@ -24,10 +28,14 @@ export default function Toolbar({
   onLayer,
   showGrid,
   onToggleGrid,
+  showMinimap,
+  onToggleMinimap,
   zoomPct,
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  isFullscreen,
+  onToggleFullscreen,
 }) {
   const btn =
     'rounded-md px-3 py-1.5 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed'
@@ -58,10 +66,35 @@ export default function Toolbar({
         + Text
       </button>
       <button
+        className={`${btn} bg-amber-400 text-slate-900 hover:bg-amber-300`}
+        onClick={onAddSticky}
+        title="Add sticky note"
+      >
+        🟨 Note
+      </button>
+      <button
         className={`${btn} bg-slate-800 hover:bg-slate-700`}
         onClick={onUploadClick}
       >
         ⬆ Image
+      </button>
+      <button
+        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        onClick={onAddFrame}
+        title="Add frame to group ideas"
+      >
+        🖼 Frame
+      </button>
+      <button
+        className={`${btn} ${
+          connecting
+            ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+            : 'bg-slate-800 hover:bg-slate-700'
+        }`}
+        onClick={onToggleConnect}
+        title="Connect two elements with an arrow (Esc to cancel)"
+      >
+        ↔ Connect
       </button>
 
       <div className="mx-1 flex items-center gap-1">
@@ -224,6 +257,17 @@ export default function Toolbar({
       >
         # Grid
       </button>
+      <button
+        className={`${btn} ${
+          showMinimap
+            ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+            : 'bg-slate-800 hover:bg-slate-700'
+        }`}
+        onClick={onToggleMinimap}
+        title="Toggle mini-map"
+      >
+        🗺 Map
+      </button>
 
       <div className="mx-1 h-6 w-px bg-slate-700" />
 
@@ -262,6 +306,16 @@ export default function Toolbar({
         onClick={onImportClick}
       >
         Import
+      </button>
+
+      <div className="mx-1 h-6 w-px bg-slate-700" />
+
+      <button
+        className={`${iconBtn} ${isFullscreen ? 'ring-2 ring-indigo-400' : ''}`}
+        onClick={onToggleFullscreen}
+        title="Toggle fullscreen"
+      >
+        ⛶
       </button>
     </header>
   )

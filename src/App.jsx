@@ -13,9 +13,17 @@ const MAX_IMG_DIM = 900
 const PASTE_OFFSET = 24
 const DEFAULT_TEXT_WIDTH = 240
 const DEFAULT_FONT_SIZE = 24
+const STICKY_SIZE = 180
+const STICKY_COLOR = '#fde047'
+const FRAME_WIDTH = 600
+const FRAME_HEIGHT = 400
 
 function idPrefix(type) {
-  return type === 'image' ? 'img' : 'txt'
+  return (
+    { image: 'img', text: 'txt', sticky: 'stk', frame: 'frm', connector: 'con' }[
+      type
+    ] || 'el'
+  )
 }
 
 function fileToScaledDataURL(file) {
@@ -63,8 +71,14 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState([])
   const [color, setColor] = useState('#f8fafc')
   const [showGrid, setShowGrid] = useState(true)
+  const [showMinimap, setShowMinimap] = useState(true)
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  // Connector-drawing mode: null when off, { from: id|null } while picking
+  // the two endpoints.
+  const [connecting, setConnecting] = useState(null)
+  const containerRef = useRef(null)
   const stageRef = useRef(null)
   const fileInputRef = useRef(null)
   const importInputRef = useRef(null)
@@ -123,6 +137,22 @@ export default function App() {
 
   const resetView = useCallback(() => setView({ scale: 1, x: 0, y: 0 }), [])
 
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      containerRef.current?.requestFullscreen?.().catch(() => {})
+    }
+  }, [])
+
+  // Keep state in sync when fullscreen is entered/exited some other way
+  // (Esc key, browser UI), not just via the toolbar button.
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+
   const addImage = useCallback(
     async (file) => {
       try {
@@ -169,6 +199,78 @@ export default function App() {
     commit((prev) => [...prev, el])
     setSelectedIds([el.id])
   }, [commit, color])
+
+  const addSticky = useCallback(() => {
+    const { x, y } = centerPoint()
+    const el = {
+      id: uid('stk'),
+      type: 'sticky',
+      text: '',
+      x: x - STICKY_SIZE / 2 + 60,
+      y: y - STICKY_SIZE / 2 + 20,
+      width: STICKY_SIZE,
+      height: STICKY_SIZE,
+      fill: STICKY_COLOR,
+      fontSize: 16,
+      rotation: 0,
+    }
+    commit((prev) => [...prev, el])
+    setSelectedIds([el.id])
+  }, [commit])
+
+  const addFrame = useCallback(() => {
+    const { x, y } = centerPoint()
+    const el = {
+      id: uid('frm'),
+      type: 'frame',
+      title: 'Frame',
+      x: x - FRAME_WIDTH / 2 + 60,
+      y: y - FRAME_HEIGHT / 2 + 20,
+      width: FRAME_WIDTH,
+      height: FRAME_HEIGHT,
+      rotation: 0,
+    }
+    // Frames go to the start of the array so they render behind everything.
+    commit((prev) => [el, ...prev])
+    setSelectedIds([el.id])
+  }, [commit])
+
+  // Two clicks while in connect mode: first picks the source, second picks
+  // the target and creates the arrow. Clicking empty canvas (id === null)
+  // cancels the mode.
+  const handleConnectClick = useCallback(
+    (id) => {
+      if (id === null) {
+        setConnecting(null)
+        return
+      }
+      if (!connecting) return
+      const el = elements.find((e) => e.id === id)
+      if (!el || el.type === 'connector') return
+      if (!connecting.from) {
+        setConnecting({ from: id })
+        return
+      }
+      if (connecting.from === id) return
+      // Skip duplicates of the same pair in the same direction.
+      const exists = elements.some(
+        (e) =>
+          e.type === 'connector' && e.from === connecting.from && e.to === id,
+      )
+      if (!exists) {
+        const conn = {
+          id: uid('con'),
+          type: 'connector',
+          from: connecting.from,
+          to: id,
+        }
+        commit((prev) => [...prev, conn])
+        setSelectedIds([conn.id])
+      }
+      setConnecting(null)
+    },
+    [connecting, elements, commit],
+  )
 
   // Patch a single element.
   const updateElement = useCallback(
@@ -265,7 +367,17 @@ export default function App() {
   const deleteElements = useCallback(
     (ids) => {
       if (!ids.length) return
-      commit((prev) => prev.filter((el) => !ids.includes(el.id)))
+      // Connectors can't outlive either endpoint, so they go too.
+      commit((prev) =>
+        prev.filter(
+          (el) =>
+            !ids.includes(el.id) &&
+            !(
+              el.type === 'connector' &&
+              (ids.includes(el.from) || ids.includes(el.to))
+            ),
+        ),
+      )
       setSelectedIds((cur) => cur.filter((id) => !ids.includes(id)))
     },
     [commit],
@@ -286,12 +398,14 @@ export default function App() {
           width: el.origWidth ?? el.width,
           height: el.origHeight ?? el.height,
         })
-      } else {
+      } else if (el.type === 'text') {
         // Text always has a sensible default size to fall back to.
         updateElement(id, {
           width: el.origWidth ?? DEFAULT_TEXT_WIDTH,
           fontSize: el.origFontSize ?? DEFAULT_FONT_SIZE,
         })
+      } else if (el.type === 'sticky') {
+        updateElement(id, { width: STICKY_SIZE, height: STICKY_SIZE })
       }
     },
     [elements, updateElement],
@@ -309,18 +423,27 @@ export default function App() {
     }
   }, [elements.length, commit, confirm])
 
-  // Apply the active color to every selected text element.
+  // Apply the active color to every selected text element (font color) and
+  // sticky note (background color).
   const handleColorChange = useCallback(
     (c) => {
       setColor(c)
-      if (!selectedTexts.length) return
+      const colorable = selectedElements.filter(
+        (el) => el.type === 'text' || el.type === 'sticky',
+      )
+      if (!colorable.length) return
       commit((prev) =>
-        prev.map((el) =>
-          selectedTexts.some((t) => t.id === el.id) ? { ...el, fill: c } : el,
-        ),
+        prev.map((el) => {
+          if (!colorable.some((t) => t.id === el.id)) return el
+          // Recoloring a whole text element supersedes any per-selection
+          // colors; sticky fill is its background, so its spans stay.
+          return el.type === 'text'
+            ? { ...el, fill: c, spans: undefined }
+            : { ...el, fill: c }
+        }),
       )
     },
-    [selectedTexts, commit],
+    [selectedElements, commit],
   )
 
   // --- Lock (prevents drag/resize until unlocked) ---
@@ -396,13 +519,25 @@ export default function App() {
       if (!targetIds.length) return
       const toDuplicate = elements.filter((el) => targetIds.includes(el.id))
       if (!toDuplicate.length) return
-      const duplicated = toDuplicate.map((el) => ({
-        ...el,
-        id: uid(idPrefix(el.type)),
-        x: el.x + PASTE_OFFSET,
-        y: el.y + PASTE_OFFSET,
-        locked: false,
-      }))
+      const idMap = new Map()
+      const duplicated = toDuplicate.map((el) => {
+        const newId = uid(idPrefix(el.type))
+        idMap.set(el.id, newId)
+        return {
+          ...el,
+          id: newId,
+          x: (el.x ?? 0) + PASTE_OFFSET,
+          y: (el.y ?? 0) + PASTE_OFFSET,
+          locked: false,
+        }
+      })
+      // Connectors whose endpoints were duplicated too should link the copies.
+      duplicated.forEach((el) => {
+        if (el.type === 'connector') {
+          el.from = idMap.get(el.from) || el.from
+          el.to = idMap.get(el.to) || el.to
+        }
+      })
       commit((prev) => [...prev, ...duplicated])
       setSelectedIds(duplicated.map((el) => el.id))
     },
@@ -422,7 +557,19 @@ export default function App() {
     const pasted = clip.map((el) => {
       const newId = uid(idPrefix(el.type))
       idMap.set(el.id, newId)
-      return { ...el, id: newId, x: el.x + PASTE_OFFSET, y: el.y + PASTE_OFFSET }
+      return {
+        ...el,
+        id: newId,
+        x: (el.x ?? 0) + PASTE_OFFSET,
+        y: (el.y ?? 0) + PASTE_OFFSET,
+      }
+    })
+    // Re-link pasted connectors to the pasted copies of their endpoints.
+    pasted.forEach((el) => {
+      if (el.type === 'connector') {
+        el.from = idMap.get(el.from) || el.from
+        el.to = idMap.get(el.to) || el.to
+      }
     })
     commit((prev) => [...prev, ...pasted])
     setSelectedIds(pasted.map((el) => el.id))
@@ -508,6 +655,8 @@ export default function App() {
           e.preventDefault()
           deleteSelected()
         }
+      } else if (e.key === 'Escape') {
+        setConnecting(null)
       }
     }
 
@@ -555,25 +704,34 @@ export default function App() {
   )
 
   return (
-    <div className="flex h-full w-full bg-slate-950">
-      <Sidebar
-        boards={boards}
-        activeId={activeId}
-        onSelect={setActiveId}
-        onCreate={() => addBoard('Untitled Board')}
-        onRename={renameBoard}
-        onDelete={deleteBoard}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
-        confirmAction={confirm}
-      />
+    <div ref={containerRef} className="flex h-full w-full bg-slate-950">
+      {!isFullscreen && (
+        <Sidebar
+          boards={boards}
+          activeId={activeId}
+          onSelect={setActiveId}
+          onCreate={() => addBoard('Untitled Board')}
+          onRename={renameBoard}
+          onDelete={deleteBoard}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
+          confirmAction={confirm}
+        />
+      )}
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {!isFullscreen && (
         <Toolbar
           boardName={activeBoard?.name || ''}
           color={color}
           onColorChange={handleColorChange}
           onAddText={addText}
+          onAddSticky={addSticky}
+          onAddFrame={addFrame}
+          connecting={!!connecting}
+          onToggleConnect={() =>
+            setConnecting((c) => (c ? null : { from: null }))
+          }
           onUploadClick={() => fileInputRef.current?.click()}
           onDeleteSelected={deleteSelected}
           onClear={clearBoard}
@@ -593,17 +751,44 @@ export default function App() {
           onLayer={(dir) => moveLayer(selected?.id, dir)}
           showGrid={showGrid}
           onToggleGrid={() => setShowGrid((v) => !v)}
+          showMinimap={showMinimap}
+          onToggleMinimap={() => setShowMinimap((v) => !v)}
           zoomPct={Math.round(view.scale * 100)}
           onZoomIn={() => zoomBy(1.2)}
           onZoomOut={() => zoomBy(1 / 1.2)}
           onZoomReset={resetView}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={toggleFullscreen}
         />
+        )}
 
         <div
           className="relative min-h-0 flex-1 bg-slate-100 dark:bg-slate-800"
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
         >
+          {isFullscreen && (
+            <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+              <button
+                onClick={() => setShowMinimap((v) => !v)}
+                title={showMinimap ? 'Hide mini-map' : 'Show mini-map'}
+                className={`flex h-8 w-8 items-center justify-center rounded-md text-slate-200 shadow-lg backdrop-blur-sm ${
+                  showMinimap
+                    ? 'bg-indigo-600/90 hover:bg-indigo-500'
+                    : 'bg-slate-900/80 hover:bg-slate-800'
+                }`}
+              >
+                🗺
+              </button>
+              <button
+                onClick={toggleFullscreen}
+                title="Exit fullscreen"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-slate-900/80 text-slate-200 shadow-lg backdrop-blur-sm hover:bg-slate-800"
+              >
+                ⛶
+              </button>
+            </div>
+          )}
           <Canvas
             stageRef={stageRef}
             elements={elements}
@@ -612,6 +797,7 @@ export default function App() {
             onChange={updateElement}
             onBatchChange={updateElements}
             showGrid={showGrid}
+            showMinimap={showMinimap}
             view={view}
             onViewChange={setView}
             onLayer={moveLayer}
@@ -622,7 +808,16 @@ export default function App() {
             onCommentChange={setComment}
             onToggleComment={toggleCommentVisibility}
             onDeleteComment={deleteComment}
+            connecting={connecting}
+            onConnectClick={handleConnectClick}
           />
+          {connecting && (
+            <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-indigo-600/90 px-3 py-1 text-xs text-white shadow-lg">
+              {connecting.from
+                ? 'Click the target element to connect'
+                : 'Click the source element'}
+            </div>
+          )}
           {elements.length === 0 && (
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-1 text-slate-400">
               <p className="text-lg font-medium">Empty board</p>
