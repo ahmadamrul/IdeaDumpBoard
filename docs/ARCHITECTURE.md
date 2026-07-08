@@ -8,7 +8,7 @@
 - **Konva 9** + **react-konva 18** — canvas rendering engine. *(Note: earlier
   planning docs mentioned Fabric.js; the project actually uses Konva via
   react-konva, chosen for its more idiomatic React bindings.)*
-- **Tailwind CSS 4** (via `@tailwindcss/vite`) — utility-first styling, dark theme only.
+- **Tailwind CSS 4** (via `@tailwindcss/vite`) — utility-first styling with light & dark themes (a `.dark` class on the root, persisted to `localStorage`, drives all `dark:` variants).
 
 ### Storage
 - **`localStorage`** — sole persistence layer today. All boards and their
