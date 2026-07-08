@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Canvas from './components/Canvas'
 import ConfirmDialog from './components/ConfirmDialog'
+import HelpDialog from './components/HelpDialog'
 import Sidebar from './components/Sidebar'
 import Toolbar from './components/Toolbar'
 import { useBoards } from './hooks/useBoards'
@@ -20,9 +21,14 @@ const FRAME_HEIGHT = 400
 
 function idPrefix(type) {
   return (
-    { image: 'img', text: 'txt', sticky: 'stk', frame: 'frm', connector: 'con' }[
-      type
-    ] || 'el'
+    {
+      image: 'img',
+      text: 'txt',
+      sticky: 'stk',
+      frame: 'frm',
+      connector: 'con',
+      draw: 'drw',
+    }[type] || 'el'
   )
 }
 
@@ -75,6 +81,10 @@ export default function App() {
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
+  // Id of a freshly-added text element that should open straight into its
+  // inline editor (so "+ Text" lets you type immediately, no double-click).
+  const [autoEditId, setAutoEditId] = useState(null)
   const [theme, setTheme] = useState(
     () => localStorage.getItem('mpp:theme') || 'dark',
   )
@@ -84,6 +94,12 @@ export default function App() {
   // Connector-drawing mode: null when off, { from: id|null } while picking
   // the two endpoints.
   const [connecting, setConnecting] = useState(null)
+  // Active pointer tool: 'select' (default), 'draw' (freehand pencil), or
+  // 'eraser' (click/drag over a drawing to remove it).
+  const [tool, setTool] = useState('select')
+  const [drawColor, setDrawColor] = useState('#f43f5e')
+  const [drawWidth, setDrawWidth] = useState(4)
+  const [drawOpacity, setDrawOpacity] = useState(1)
   const containerRef = useRef(null)
   const stageRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -201,7 +217,7 @@ export default function App() {
     const el = {
       id: uid('txt'),
       type: 'text',
-      text: 'Double-click to edit',
+      text: '',
       x,
       y,
       fontSize: DEFAULT_FONT_SIZE,
@@ -214,7 +230,8 @@ export default function App() {
       rotation: 0,
     }
     commit((prev) => [...prev, el])
-    setSelectedIds([el.id])
+    // Open its editor right away instead of dropping a placeholder to click.
+    setAutoEditId(el.id)
   }, [commit, color])
 
   const addSticky = useCallback(() => {
@@ -287,6 +304,27 @@ export default function App() {
       setConnecting(null)
     },
     [connecting, elements, commit],
+  )
+
+  // Switch the active pointer tool. Leaving 'select' also exits connect mode
+  // so the two modes never fight over clicks.
+  const selectTool = useCallback((t) => {
+    setTool(t)
+    if (t !== 'select') {
+      setConnecting(null)
+      setSelectedIds([]) // detach the transformer so it can't eat the first stroke
+    }
+  }, [])
+
+  // Commit a finished freehand stroke. Canvas hands us the geometry (points
+  // relative to the stroke's bounding box, plus that box) and the current
+  // pen style; we just tag it with an id and record it for undo.
+  const addDrawing = useCallback(
+    (data) => {
+      const el = { id: uid('drw'), type: 'draw', rotation: 0, ...data }
+      commit((prev) => [...prev, el])
+    },
+    [commit],
   )
 
   // Patch a single element.
@@ -672,8 +710,15 @@ export default function App() {
           e.preventDefault()
           deleteSelected()
         }
+      } else if (!mod && e.key.toLowerCase() === 'v') {
+        setTool('select')
+      } else if (!mod && (e.key.toLowerCase() === 'p' || e.key.toLowerCase() === 'd')) {
+        selectTool('draw')
+      } else if (!mod && e.key.toLowerCase() === 'e') {
+        selectTool('eraser')
       } else if (e.key === 'Escape') {
         setConnecting(null)
+        setTool('select')
       }
     }
 
@@ -707,6 +752,7 @@ export default function App() {
     copySelected,
     pasteClipboard,
     duplicateSelected,
+    selectTool,
   ])
 
   const onDrop = useCallback(
@@ -756,6 +802,14 @@ export default function App() {
           onToggleConnect={() =>
             setConnecting((c) => (c ? null : { from: null }))
           }
+          tool={tool}
+          onSelectTool={selectTool}
+          drawColor={drawColor}
+          onDrawColorChange={setDrawColor}
+          drawWidth={drawWidth}
+          onDrawWidthChange={setDrawWidth}
+          drawOpacity={drawOpacity}
+          onDrawOpacityChange={setDrawOpacity}
           onUploadClick={() => fileInputRef.current?.click()}
           onDeleteSelected={deleteSelected}
           onClear={clearBoard}
@@ -795,6 +849,13 @@ export default function App() {
         >
           {isFullscreen && (
             <div className="absolute right-4 top-4 z-10 flex items-center gap-2">
+              <button
+                onClick={() => setShowHelp(true)}
+                title="Help & keyboard shortcuts"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white shadow-lg backdrop-blur-sm hover:bg-indigo-500"
+              >
+                !
+              </button>
               <button
                 onClick={() => setShowMinimap((v) => !v)}
                 title={showMinimap ? 'Hide mini-map' : 'Show mini-map'}
@@ -850,6 +911,13 @@ export default function App() {
             onDeleteComment={deleteComment}
             connecting={connecting}
             onConnectClick={handleConnectClick}
+            tool={tool}
+            drawColor={drawColor}
+            drawWidth={drawWidth}
+            drawOpacity={drawOpacity}
+            onAddDrawing={addDrawing}
+            autoEditId={autoEditId}
+            onAutoEditHandled={() => setAutoEditId(null)}
           />
           {connecting && (
             <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full bg-indigo-600/90 px-3 py-1 text-xs text-white shadow-lg">
@@ -888,7 +956,21 @@ export default function App() {
         onChange={handleImportFile}
       />
 
+      {/* Help button pinned to the very top-right corner — fixed so it never
+          shifts when the toolbar wraps. (Fullscreen has its own in the
+          floating control group above.) */}
+      {!isFullscreen && (
+        <button
+          onClick={() => setShowHelp(true)}
+          title="Help & keyboard shortcuts"
+          className="fixed right-3 top-2.5 z-40 flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-xs font-semibold text-white shadow-sm hover:bg-indigo-500"
+        >
+          !
+        </button>
+      )}
+
       <ConfirmDialog dialog={dialog} onClose={close} />
+      <HelpDialog open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   )
 }

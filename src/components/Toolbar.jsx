@@ -52,6 +52,43 @@ const MapIcon = (
   </svg>
 )
 
+// Pencil icon for the draw tool.
+const PencilIcon = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M12 20h9" />
+    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+  </svg>
+)
+
+// Eraser icon for the eraser tool.
+const EraserIcon = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M20 20H7L3 16a2 2 0 0 1 0-3l8-8a2 2 0 0 1 3 0l6 6a2 2 0 0 1 0 3l-6 6" />
+    <path d="m8 8 8 8" />
+  </svg>
+)
+
+const STROKE_WIDTHS = [2, 4, 6, 8, 12]
+const OPACITIES = [1, 0.75, 0.5, 0.25]
+
 export default function Toolbar({
   boardName,
   color,
@@ -61,6 +98,14 @@ export default function Toolbar({
   onAddFrame,
   connecting,
   onToggleConnect,
+  tool,
+  onSelectTool,
+  drawColor,
+  onDrawColorChange,
+  drawWidth,
+  onDrawWidthChange,
+  drawOpacity,
+  onDrawOpacityChange,
   onUploadClick,
   onDeleteSelected,
   onClear,
@@ -92,9 +137,9 @@ export default function Toolbar({
   onToggleFullscreen,
 }) {
   const btn =
-    'rounded-md px-3 py-1.5 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed'
+    'rounded-md px-2 py-1 text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed'
   const iconBtn =
-    'flex h-8 min-w-8 items-center justify-center rounded-md bg-slate-200 px-2 text-sm hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed'
+    'flex h-7 min-w-7 items-center justify-center rounded-md bg-slate-200 px-1.5 text-xs hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed'
 
   const isBold = (selected?.fontStyle || '').includes('bold')
   const isItalic = (selected?.fontStyle || '').includes('italic')
@@ -103,7 +148,7 @@ export default function Toolbar({
     `${iconBtn} ${align === val ? 'ring-2 ring-indigo-400' : ''}`
 
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-slate-300 bg-white px-4 py-2 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+    <header className="flex flex-wrap items-center gap-2 border-b border-slate-300 bg-white py-2 pl-4 pr-14 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
       <span className="mr-2 max-w-40 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
         {boardName}
       </span>
@@ -150,6 +195,74 @@ export default function Toolbar({
       >
         ↔ Connect
       </button>
+      <button
+        className={`${btn} ${
+          tool === 'draw'
+            ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+            : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700'
+        }`}
+        onClick={() => onSelectTool(tool === 'draw' ? 'select' : 'draw')}
+        title="Draw freehand (P or D — Esc to exit)"
+      >
+        <span className="inline-flex items-center gap-1">{PencilIcon} Draw</span>
+      </button>
+      <button
+        className={`${btn} ${
+          tool === 'eraser'
+            ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+            : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700'
+        }`}
+        onClick={() => onSelectTool(tool === 'eraser' ? 'select' : 'eraser')}
+        title="Erase drawings (E — click or drag over a drawing)"
+      >
+        <span className="inline-flex items-center gap-1">
+          {EraserIcon} Eraser
+        </span>
+      </button>
+
+      {/* Drawing properties — only while the pencil is active */}
+      {tool === 'draw' && (
+        <>
+          <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
+          <div className="flex items-center gap-1">
+            <input
+              type="color"
+              value={drawColor}
+              onChange={(e) => onDrawColorChange(e.target.value)}
+              title="Pen color"
+              className="h-6 w-6 cursor-pointer rounded border border-slate-300 bg-transparent p-0 dark:border-slate-700"
+            />
+            {STROKE_WIDTHS.map((w) => (
+              <button
+                key={w}
+                onClick={() => onDrawWidthChange(w)}
+                title={`Stroke width ${w}px`}
+                className={`flex h-7 w-7 items-center justify-center rounded-md bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 ${
+                  drawWidth === w ? 'ring-2 ring-indigo-400' : ''
+                }`}
+              >
+                <span
+                  className="rounded-full bg-slate-700 dark:bg-slate-200"
+                  style={{ width: w, height: w }}
+                />
+              </button>
+            ))}
+            <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
+            {OPACITIES.map((o) => (
+              <button
+                key={o}
+                onClick={() => onDrawOpacityChange(o)}
+                title={`Opacity ${Math.round(o * 100)}%`}
+                className={`flex h-7 min-w-8 items-center justify-center rounded-md bg-slate-200 px-1 text-xs hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 ${
+                  drawOpacity === o ? 'ring-2 ring-indigo-400' : ''
+                }`}
+              >
+                {Math.round(o * 100)}%
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <div className="mx-1 flex items-center gap-1">
         {COLORS.map((c) => (

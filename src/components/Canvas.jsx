@@ -335,6 +335,13 @@ export default function Canvas({
   onDeleteComment, // (id) => void
   connecting, // null | { from: id|null } — connector-drawing mode state
   onConnectClick, // (id|null) => void — element clicked while connecting (null = cancel)
+  tool, // 'select' | 'draw' | 'eraser'
+  drawColor, // pen color while drawing
+  drawWidth, // pen stroke width
+  drawOpacity, // pen opacity (0-1)
+  onAddDrawing, // (element data) => void — commit a finished freehand stroke
+  autoEditId, // id of a just-added text element to open straight into editing
+  onAutoEditHandled, // () => void — clear the auto-edit signal once consumed
 }) {
   const wrapperRef = useRef(null)
   const layerRef = useRef(null)
@@ -353,6 +360,9 @@ export default function Canvas({
   const selectDragRef = useRef(null) // { startX, startY } world coords, while drag-selecting
   const panRef = useRef(null) // { lastX, lastY } screen coords, while panning
   const groupDragRef = useRef(null) // Map<id, {x,y}> start positions during a group drag
+  const strokeRef = useRef(null) // flat [x,y,...] world coords of the in-progress freehand stroke
+  const erasingRef = useRef(false) // true while an eraser drag is active
+  const [stroke, setStroke] = useState(null) // live copy of strokeRef for rendering
 
   // Keep the stage sized to its container.
   useLayoutEffect(() => {
@@ -374,9 +384,12 @@ export default function Canvas({
         panRef.current = null
         if (wrapperRef.current) wrapperRef.current.style.cursor = 'default'
       }
+      if (strokeRef.current) finalizeStroke()
+      if (erasingRef.current) erasingRef.current = false
     }
     window.addEventListener('mouseup', onWindowMouseUp)
     return () => window.removeEventListener('mouseup', onWindowMouseUp)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Re-clamp whenever the view or viewport size changes from elsewhere
@@ -401,8 +414,11 @@ export default function Canvas({
       .filter((id) => {
         const el = elements.find((e) => e.id === id)
         // Connectors have no meaningful resize box — their shape derives
-        // entirely from their endpoints.
-        return el && !el.locked && el.type !== 'connector'
+        // entirely from their endpoints. Freehand drawings are moved but not
+        // box-resized (Transformer scaling wouldn't rewrite their points).
+        return (
+          el && !el.locked && el.type !== 'connector' && el.type !== 'draw'
+        )
       })
       .map((id) => stage.findOne('#' + id))
       .filter(Boolean)
@@ -427,6 +443,9 @@ export default function Canvas({
       onConnectClick(id)
       return
     }
+    // The pencil and eraser own the pointer while active — a click on a shape
+    // should draw/erase, never change the selection.
+    if (tool !== 'select') return
     const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey
     if (additive) {
       onSelectionChange(
@@ -441,9 +460,69 @@ export default function Canvas({
     // the whole group selected (so a group-drag can start from any member).
   }
 
+  // Turn the in-progress freehand stroke into a committed 'draw' element.
+  // Points are stored relative to the stroke's bounding box so the element
+  // has a real x/y/width/height (needed for dragging, the mini-map, and
+  // marquee selection).
+  const finalizeStroke = () => {
+    const pts = strokeRef.current
+    strokeRef.current = null
+    setStroke(null)
+    if (!pts || pts.length < 4) return // need at least two distinct points
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    for (let i = 0; i < pts.length; i += 2) {
+      minX = Math.min(minX, pts[i])
+      maxX = Math.max(maxX, pts[i])
+      minY = Math.min(minY, pts[i + 1])
+      maxY = Math.max(maxY, pts[i + 1])
+    }
+    const rel = pts.map((v, i) => (i % 2 ? v - minY : v - minX))
+    onAddDrawing({
+      points: rel,
+      x: minX,
+      y: minY,
+      width: Math.max(1, maxX - minX),
+      height: Math.max(1, maxY - minY),
+      stroke: drawColor,
+      strokeWidth: drawWidth,
+      opacity: drawOpacity,
+    })
+  }
+
+  // Delete whatever drawing sits under the pointer (used by the eraser on
+  // both the initial click and every move of a drag). Non-drawing elements
+  // are left untouched.
+  const eraseAtPointer = () => {
+    const stage = stageRef.current
+    if (!stage) return
+    const shape = stage.getIntersection(stage.getPointerPosition())
+    if (!shape) return
+    const id = shape.id()
+    const el = elements.find((e) => e.id === id)
+    if (el?.type === 'draw' && !el.locked) onDeleteElement([id])
+  }
+
   const handleStageMouseDown = (e) => {
     const stage = stageRef.current
     const clickedEmpty = e.target === stage
+
+    // Freehand pencil: begin a stroke on left-press anywhere (drawing is
+    // allowed over other elements, so we don't require an empty target).
+    if (tool === 'draw' && e.evt.button === 0) {
+      const pos = stage.getRelativePointerPosition()
+      strokeRef.current = [pos.x, pos.y]
+      setStroke([pos.x, pos.y])
+      return
+    }
+    // Eraser: erase on press, then keep erasing while the button is held.
+    if (tool === 'eraser' && e.evt.button === 0) {
+      erasingRef.current = true
+      eraseAtPointer()
+      return
+    }
 
     // Middle-mouse anywhere, or right-click-hold on empty canvas, pans
     // instead of selecting. Right-click on a shape still opens its context
@@ -474,6 +553,18 @@ export default function Canvas({
     const stage = stageRef.current
     if (!stage) return
 
+    if (strokeRef.current) {
+      const pos = stage.getRelativePointerPosition()
+      strokeRef.current.push(pos.x, pos.y)
+      setStroke([...strokeRef.current])
+      return
+    }
+
+    if (erasingRef.current) {
+      eraseAtPointer()
+      return
+    }
+
     if (panRef.current) {
       const { clientX, clientY } = e.evt
       const dx = clientX - panRef.current.lastX
@@ -498,6 +589,15 @@ export default function Canvas({
   }
 
   const handleStageMouseUp = () => {
+    if (strokeRef.current) {
+      finalizeStroke()
+      return
+    }
+    if (erasingRef.current) {
+      erasingRef.current = false
+      return
+    }
+
     if (panRef.current) {
       panRef.current = null
       if (wrapperRef.current) wrapperRef.current.style.cursor = 'default'
@@ -572,6 +672,16 @@ export default function Canvas({
       fontStyle: el.fontStyle || 'normal',
     })
   }
+
+  // A newly-added text element (from "+ Text") opens straight into its editor
+  // so you can type immediately instead of double-clicking a placeholder.
+  useEffect(() => {
+    if (!autoEditId) return
+    const el = elements.find((e) => e.id === autoEditId)
+    if (el && el.type === 'text' && editing?.id !== el.id) startEditing(el)
+    onAutoEditHandled()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoEditId, elements])
 
   // Color button clicked while editing: recolor just the selected range of
   // the textarea, or everything when nothing is selected.
@@ -789,6 +899,12 @@ export default function Canvas({
         fill: uniform ? fills[0] : editing.fill,
         spans: uniform ? undefined : fillsToSpans(text, fills),
       })
+    } else {
+      // Left empty — if this was a never-filled element (e.g. a fresh "+ Text"
+      // that was dismissed without typing), drop it instead of leaving an
+      // invisible empty note behind. Elements that already had content keep it.
+      const el = elements.find((e) => e.id === editing.id)
+      if (el && !el.text) onDeleteElement([editing.id])
     }
     setEditing(null)
   }
@@ -1028,7 +1144,12 @@ export default function Canvas({
     <div
       ref={wrapperRef}
       className="relative h-full w-full"
-      style={{ cursor: connecting ? 'crosshair' : undefined }}
+      style={{
+        cursor:
+          connecting || tool === 'draw' || tool === 'eraser'
+            ? 'crosshair'
+            : undefined,
+      }}
     >
       <Stage
         ref={stageRef}
@@ -1084,7 +1205,7 @@ export default function Canvas({
 
             const common = {
               id: el.id,
-              draggable: !el.locked,
+              draggable: tool === 'select' && !el.locked,
               rotation: el.rotation || 0,
               opacity: el.locked ? 0.7 : 1,
               dragBoundFunc,
@@ -1098,7 +1219,27 @@ export default function Canvas({
 
             let shapeNode = null
 
-            if (el.type === 'image') {
+            if (el.type === 'draw') {
+              const isSelected = selectedIds.includes(el.id)
+              shapeNode = (
+                <Line
+                  key={el.id}
+                  {...common}
+                  x={el.x}
+                  y={el.y}
+                  points={el.points}
+                  stroke={el.stroke}
+                  strokeWidth={el.strokeWidth}
+                  opacity={el.locked ? 0.5 : el.opacity ?? 1}
+                  lineCap="round"
+                  lineJoin="round"
+                  tension={0.4}
+                  hitStrokeWidth={Math.max(el.strokeWidth, 14)}
+                  shadowColor={isSelected ? '#6366f1' : undefined}
+                  shadowBlur={isSelected ? 8 : 0}
+                />
+              )
+            } else if (el.type === 'image') {
               shapeNode = (
                 <URLImage
                   key={el.id}
@@ -1225,7 +1366,7 @@ export default function Canvas({
                     dash={[8, 4]}
                     cornerRadius={8}
                     fillEnabled={false}
-                    hitStrokeWidth={12}
+                    hitStrokeWidth={28}
                   />
                   <Text
                     y={-(el.titleFontSize || 14) - 10}
@@ -1388,6 +1529,20 @@ export default function Canvas({
               listening={false}
             />
           ))}
+
+          {/* Live preview of the stroke currently being drawn */}
+          {stroke && (
+            <Line
+              points={stroke}
+              stroke={drawColor}
+              strokeWidth={drawWidth}
+              opacity={drawOpacity}
+              lineCap="round"
+              lineJoin="round"
+              tension={0.4}
+              listening={false}
+            />
+          )}
         </Layer>
       </Stage>
 

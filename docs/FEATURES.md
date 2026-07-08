@@ -13,7 +13,9 @@ Status reflects the actual code in `src/` as of this writing — not a wishlist.
 | Add text notes | ✅ | Toolbar "+ Text", double-click to edit inline. |
 | Sticky notes | ✅ | Toolbar "🟨 Note". Type inside, recolor the background from the palette, resize/rotate like any element. |
 | Connectors / arrows | ✅ | Toolbar "↔ Connect", then click a source and a target element. The arrow trims to each element's edge, follows both endpoints live while dragging (incl. group/frame drags), and is deleted automatically when either endpoint is removed. `Esc` or clicking empty canvas cancels connect mode. |
-| Frames | ✅ | Toolbar "🖼 Frame". A dashed grouping area rendered behind everything, with an editable title; dragging the frame carries every element whose center is inside it. |
+| Frames | ✅ | Toolbar "🖼 Frame". A dashed grouping area rendered behind everything, with an editable title; dragging the frame carries every element whose center is inside it. The dashed border has a wide (~28px) invisible hit band so the frame is easy to grab. |
+| Freehand drawing (pencil) | ✅ | Toolbar "✏ Draw" or `P`/`D`. Click & drag to draw; pen color, stroke width (2/4/6/8/12), and opacity (100/75/50/25%) are set in the drawing-properties bar. Strokes are real elements — movable, selectable, duplicable, undoable. |
+| Eraser | ✅ | Toolbar "Eraser" or `E`. Click or drag over a drawing to delete it (only affects freehand strokes, not other elements). |
 | Move elements | ✅ | Drag any element; dragging a multi-selected element moves the whole group. |
 | Resize elements | ✅ | Corner + side handles on the selection box. |
 | Rotate elements | ✅ | Rotation handle above the box, **single-selection only** (disabled for multi-select to avoid a confusing skewed group rotation). |
@@ -91,4 +93,4 @@ Status reflects the actual code in `src/` as of this writing — not a wishlist.
 ## Not Planned / Explicitly Out of Scope
 - Real-time collaboration / multi-user editing.
 - User accounts or authentication.
-- Freeform vector shapes (rectangles/ellipses/polygons/freehand drawing). The board has text, images, sticky notes, frames, and connector arrows — but no general shape/drawing tools.
+- Geometric vector shapes (rectangles/ellipses/polygons). The board has text, images, sticky notes, frames, connector arrows, and freehand pencil drawings — but no snap-to primitive shape tools.
