@@ -31,6 +31,9 @@ import URLImage from './URLImage'
 const GRID_SIZE = 40
 const MIN_SCALE = 0.2
 const MAX_SCALE = 4
+// How close (in screen pixels) a dragged edge/center must come to another
+// element's edge/center before it snaps and shows an alignment guide.
+const SNAP_PX = 10
 // The pannable/zoomable world is capped to this rect (world-space
 // coordinates) so users can't scroll off into empty infinite space —
 // panning stops once the canvas edge reaches the viewport edge.
@@ -318,6 +321,8 @@ export default function Canvas({
   onBatchChange, // (patches: {id, ...}[]) => void — commits many at once
   showGrid,
   showMinimap,
+  theme,
+  snapEnabled,
   view,
   onViewChange, // ({ scale, x, y }) => void
   onLayer, // (id, 'front' | 'forward' | 'backward' | 'back') => void
@@ -341,6 +346,8 @@ export default function Canvas({
   const [editingComment, setEditingComment] = useState(null) // { id, value, x, y }
   const [menu, setMenu] = useState(null) // { x, y, id }
   const [selectRect, setSelectRect] = useState(null) // {x,y,width,height} world coords
+  const [guides, setGuides] = useState([]) // active alignment guide lines (world coords) during a drag
+  const guideSigRef = useRef('') // last-rendered guide signature, to skip redundant setState
 
   const editAreaRef = useRef(null) // the active editing textarea, for selection-based coloring
   const selectDragRef = useRef(null) // { startX, startY } world coords, while drag-selecting
@@ -620,12 +627,23 @@ export default function Canvas({
 
   const startEditingFrame = (el) => {
     onSelectionChange([])
-    setEditingFrame({ id: el.id, value: el.title || 'Frame', x: el.x, y: el.y })
+    setEditingFrame({
+      id: el.id,
+      value: el.title || 'Frame',
+      x: el.x,
+      y: el.y,
+      fontSize: el.titleFontSize || 14,
+      fontFamily: el.titleFontFamily || DEFAULT_FONT,
+    })
   }
 
   const commitEditingFrame = () => {
     if (!editingFrame) return
-    onChange(editingFrame.id, { title: editingFrame.value.trim() || 'Frame' })
+    onChange(editingFrame.id, {
+      title: editingFrame.value.trim() || 'Frame',
+      titleFontSize: editingFrame.fontSize,
+      titleFontFamily: editingFrame.fontFamily,
+    })
     setEditingFrame(null)
   }
 
@@ -731,19 +749,30 @@ export default function Canvas({
     }
   }
 
-  // Grid lines span a large virtual area so they stay visible while panning/zooming.
+  // Only draw grid lines across the currently visible world region (plus a
+  // small margin so edges never show while panning), instead of a fixed
+  // 12000×12000 field. This keeps the count to a few dozen lines regardless
+  // of zoom, versus ~600 static nodes redrawn on every pan/zoom frame.
   const gridLines = useMemo(() => {
     if (!showGrid) return []
-    const BOUND = 6000
+    const margin = GRID_SIZE * 2
+    const left = -view.x / view.scale
+    const top = -view.y / view.scale
+    const right = (size.width - view.x) / view.scale
+    const bottom = (size.height - view.y) / view.scale
+    const startX = Math.floor((left - margin) / GRID_SIZE) * GRID_SIZE
+    const endX = Math.ceil((right + margin) / GRID_SIZE) * GRID_SIZE
+    const startY = Math.floor((top - margin) / GRID_SIZE) * GRID_SIZE
+    const endY = Math.ceil((bottom + margin) / GRID_SIZE) * GRID_SIZE
     const lines = []
-    for (let x = -BOUND; x <= BOUND; x += GRID_SIZE) {
-      lines.push({ key: `v${x}`, points: [x, -BOUND, x, BOUND] })
+    for (let x = startX; x <= endX; x += GRID_SIZE) {
+      lines.push({ key: `v${x}`, points: [x, startY, x, endY] })
     }
-    for (let y = -BOUND; y <= BOUND; y += GRID_SIZE) {
-      lines.push({ key: `h${y}`, points: [-BOUND, y, BOUND, y] })
+    for (let y = startY; y <= endY; y += GRID_SIZE) {
+      lines.push({ key: `h${y}`, points: [startX, y, endX, y] })
     }
     return lines
-  }, [showGrid])
+  }, [showGrid, view, size])
 
   const commitEditing = () => {
     if (!editing) return
@@ -787,6 +816,65 @@ export default function Canvas({
       if (!arrow || !fromEl || !toEl) return
       arrow.points(connectorPoints(fromEl, toEl, moved))
     })
+  }
+
+  // Only re-render guide lines when the set actually changes — dragmove
+  // fires on every pointer move and setState each time would thrash.
+  const updateGuides = (next) => {
+    const sig = next.map((g) => g.points.join(',')).join('|')
+    if (sig !== guideSigRef.current) {
+      guideSigRef.current = sig
+      setGuides(next)
+    }
+  }
+
+  // Snap the dragged element's edges/center to the nearest other element's
+  // edges/center (within SNAP_PX on screen) and return the snapped world
+  // position plus the guide lines to draw. `movingIds` are excluded as
+  // targets since they travel with the drag.
+  const computeSnap = (el, rawX, rawY, movingIds) => {
+    const { w, h } = elementSize(el)
+    const threshold = SNAP_PX / view.scale
+    const dragV = [rawX, rawX + w / 2, rawX + w] // left, center, right
+    const dragH = [rawY, rawY + h / 2, rawY + h] // top, middle, bottom
+    let bestV = null
+    let bestH = null
+    for (const other of elements) {
+      if (other.type === 'connector' || movingIds.has(other.id)) continue
+      const os = elementSize(other)
+      const ov = [other.x, other.x + os.w / 2, other.x + os.w]
+      const oh = [other.y, other.y + os.h / 2, other.y + os.h]
+      for (const dp of dragV) {
+        for (const op of ov) {
+          const diff = op - dp
+          const ad = Math.abs(diff)
+          if (ad <= threshold && (!bestV || ad < Math.abs(bestV.diff)))
+            bestV = { diff, line: op, other, os }
+        }
+      }
+      for (const dp of dragH) {
+        for (const op of oh) {
+          const diff = op - dp
+          const ad = Math.abs(diff)
+          if (ad <= threshold && (!bestH || ad < Math.abs(bestH.diff)))
+            bestH = { diff, line: op, other, os }
+        }
+      }
+    }
+    const x = bestV ? rawX + bestV.diff : rawX
+    const y = bestH ? rawY + bestH.diff : rawY
+    const gs = []
+    if (bestV) {
+      const y1 = Math.min(y, bestV.other.y)
+      const y2 = Math.max(y + h, bestV.other.y + bestV.os.h)
+      gs.push({ points: [bestV.line, y1, bestV.line, y2] })
+    }
+    if (bestH) {
+      const x1 = Math.min(x, bestH.other.x)
+      const x2 = Math.max(x + w, bestH.other.x + bestH.os.w)
+      gs.push({ points: [x1, bestH.line, x2, bestH.line] })
+    }
+    return { x, y, guides: gs }
   }
 
   // --- Group drag: moving one member of a multi-selection moves them all,
@@ -836,6 +924,25 @@ export default function Canvas({
   const handleDragMove = (id, e) => {
     const stage = stageRef.current
     const node = e.target
+
+    // Alignment guides snap the dragged element to other elements' edges and
+    // centers. Runs alongside grid snapping (grid quantizes first via
+    // dragBoundFunc; this then fine-tunes to real element edges).
+    if (snapEnabled) {
+      const el = elements.find((e) => e.id === id)
+      if (el) {
+        const grp = groupDragRef.current
+        const movingIds =
+          grp && grp.leaderId === id
+            ? new Set(grp.starts.keys())
+            : new Set([id])
+        const snapped = computeSnap(el, node.x(), node.y(), movingIds)
+        if (snapped.x !== node.x() || snapped.y !== node.y())
+          node.position({ x: snapped.x, y: snapped.y })
+        updateGuides(snapped.guides)
+      }
+    }
+
     syncCommentNode(stage, id, node.x(), node.y())
 
     const moved = new Map([[id, { x: node.x(), y: node.y() }]])
@@ -859,6 +966,7 @@ export default function Canvas({
   }
 
   const handleDragEnd = (id, e) => {
+    updateGuides([]) // clear alignment guides once the drag settles
     const group = groupDragRef.current
     if (group && group.leaderId === id) {
       const stage = stageRef.current
@@ -885,6 +993,23 @@ export default function Canvas({
     ],
     [elements],
   )
+
+  // Precompute each connector's arrow points, memoized on `elements`. This
+  // keeps the array references STABLE across re-renders that don't change
+  // element positions (e.g. the snap feature's setGuides during a drag), so
+  // react-konva won't overwrite the points we update imperatively in
+  // syncConnectors mid-drag — which was causing the arrow to flicker to a
+  // stale position while dragging a connected object.
+  const connectorPointsMap = useMemo(() => {
+    const map = {}
+    for (const c of elements) {
+      if (c.type !== 'connector') continue
+      const fromEl = elements.find((e) => e.id === c.from)
+      const toEl = elements.find((e) => e.id === c.to)
+      if (fromEl && toEl) map[c.id] = connectorPoints(fromEl, toEl)
+    }
+    return map
+  }, [elements])
 
   // Highlight the source element while picking a connector target.
   const connectSourceEl = connecting?.from
@@ -926,7 +1051,7 @@ export default function Canvas({
               <Line
                 key={l.key}
                 points={l.points}
-                stroke="#475569"
+                stroke={theme === 'light' ? '#cbd5e1' : '#475569'}
                 strokeWidth={1}
                 opacity={0.35}
               />
@@ -936,15 +1061,14 @@ export default function Canvas({
         <Layer ref={layerRef}>
           {orderedElements.map((el) => {
             if (el.type === 'connector') {
-              const fromEl = elements.find((e) => e.id === el.from)
-              const toEl = elements.find((e) => e.id === el.to)
-              if (!fromEl || !toEl) return null
+              const pts = connectorPointsMap[el.id]
+              if (!pts) return null
               const isSelected = selectedIds.includes(el.id)
               return (
                 <Arrow
                   key={el.id}
                   id={el.id}
-                  points={connectorPoints(fromEl, toEl)}
+                  points={pts}
                   stroke={isSelected ? '#818cf8' : '#94a3b8'}
                   fill={isSelected ? '#818cf8' : '#94a3b8'}
                   strokeWidth={2}
@@ -1104,9 +1228,10 @@ export default function Canvas({
                     hitStrokeWidth={12}
                   />
                   <Text
-                    y={-24}
-                    text={el.title || 'Frame'}
-                    fontSize={14}
+                    y={-(el.titleFontSize || 14) - 10}
+                    text={editingFrame?.id === el.id ? '' : el.title || 'Frame'}
+                    fontSize={el.titleFontSize || 14}
+                    fontFamily={el.titleFontFamily || DEFAULT_FONT}
                     fontStyle="bold"
                     fill="#94a3b8"
                     onDblClick={() => !el.locked && startEditingFrame(el)}
@@ -1253,6 +1378,16 @@ export default function Canvas({
               listening={false}
             />
           )}
+
+          {guides.map((g, i) => (
+            <Line
+              key={i}
+              points={g.points}
+              stroke="#f43f5e"
+              strokeWidth={1.5 / view.scale}
+              listening={false}
+            />
+          ))}
         </Layer>
       </Stage>
 
@@ -1440,34 +1575,53 @@ export default function Canvas({
         })()}
 
       {editingFrame && (
-        <input
-          autoFocus
-          value={editingFrame.value}
-          onChange={(e) =>
-            setEditingFrame((s) => ({ ...s, value: e.target.value }))
-          }
-          onBlur={commitEditingFrame}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') commitEditingFrame()
-            if (e.key === 'Escape') setEditingFrame(null)
-          }}
-          style={{
-            position: 'absolute',
-            left: editingFrame.x * view.scale + view.x,
-            top: (editingFrame.y - 24) * view.scale + view.y - 4,
-            width: 180,
-            fontSize: 13,
-            fontWeight: 700,
-            fontFamily: 'system-ui, sans-serif',
-            color: '#e2e8f0',
-            background: '#1e293b',
-            border: '1px solid #6366f1',
-            borderRadius: 4,
-            padding: '2px 6px',
-            outline: 'none',
-            zIndex: 10,
-          }}
-        />
+        <>
+          <FontBar
+            left={editingFrame.x * view.scale + view.x}
+            top={Math.max(
+              4,
+              (editingFrame.y - editingFrame.fontSize - 10) * view.scale +
+                view.y -
+                40,
+            )}
+            fontSize={editingFrame.fontSize}
+            fontFamily={editingFrame.fontFamily}
+            minSize={8}
+            maxSize={72}
+            onChange={(patch) => setEditingFrame((s) => ({ ...s, ...patch }))}
+          />
+          <input
+            autoFocus
+            value={editingFrame.value}
+            onChange={(e) =>
+              setEditingFrame((s) => ({ ...s, value: e.target.value }))
+            }
+            onBlur={commitEditingFrame}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commitEditingFrame()
+              if (e.key === 'Escape') setEditingFrame(null)
+            }}
+            style={{
+              position: 'absolute',
+              left: editingFrame.x * view.scale + view.x,
+              top:
+                (editingFrame.y - editingFrame.fontSize - 10) * view.scale +
+                view.y -
+                4,
+              width: 200,
+              fontSize: editingFrame.fontSize * view.scale,
+              fontWeight: 700,
+              fontFamily: editingFrame.fontFamily || DEFAULT_FONT,
+              color: '#e2e8f0',
+              background: '#1e293b',
+              border: '1px solid #6366f1',
+              borderRadius: 4,
+              padding: '2px 6px',
+              outline: 'none',
+              zIndex: 10,
+            }}
+          />
+        </>
       )}
 
       {editingComment && (
@@ -1686,7 +1840,14 @@ export default function Canvas({
         />
       )}
 
-      {showMinimap && <MiniMap elements={elements} view={view} size={size} />}
+      {showMinimap && (
+        <MiniMap
+          elements={elements}
+          view={view}
+          size={size}
+          onViewChange={onViewChange}
+        />
+      )}
     </div>
   )
 }

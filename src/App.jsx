@@ -75,6 +75,12 @@ export default function App() {
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem('mpp:theme') || 'dark',
+  )
+  const [snapEnabled, setSnapEnabled] = useState(
+    () => localStorage.getItem('mpp:snap') !== 'off',
+  )
   // Connector-drawing mode: null when off, { from: id|null } while picking
   // the two endpoints.
   const [connecting, setConnecting] = useState(null)
@@ -152,6 +158,17 @@ export default function App() {
     document.addEventListener('fullscreenchange', onChange)
     return () => document.removeEventListener('fullscreenchange', onChange)
   }, [])
+
+  // Apply the theme by toggling the `.dark` class on the root element (which
+  // drives every Tailwind `dark:` variant) and persist the choice.
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark')
+    localStorage.setItem('mpp:theme', theme)
+  }, [theme])
+
+  useEffect(() => {
+    localStorage.setItem('mpp:snap', snapEnabled ? 'on' : 'off')
+  }, [snapEnabled])
 
   const addImage = useCallback(
     async (file) => {
@@ -704,7 +721,10 @@ export default function App() {
   )
 
   return (
-    <div ref={containerRef} className="flex h-full w-full bg-slate-950">
+    <div
+      ref={containerRef}
+      className="flex h-full w-full bg-slate-100 dark:bg-slate-950"
+    >
       {!isFullscreen && (
         <Sidebar
           boards={boards}
@@ -716,6 +736,10 @@ export default function App() {
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed((v) => !v)}
           confirmAction={confirm}
+          theme={theme}
+          onToggleTheme={() =>
+            setTheme((t) => (t === 'dark' ? 'light' : 'dark'))
+          }
         />
       )}
 
@@ -753,6 +777,8 @@ export default function App() {
           onToggleGrid={() => setShowGrid((v) => !v)}
           showMinimap={showMinimap}
           onToggleMinimap={() => setShowMinimap((v) => !v)}
+          snapEnabled={snapEnabled}
+          onToggleSnap={() => setSnapEnabled((v) => !v)}
           zoomPct={Math.round(view.scale * 100)}
           onZoomIn={() => zoomBy(1.2)}
           onZoomOut={() => zoomBy(1 / 1.2)}
@@ -778,7 +804,19 @@ export default function App() {
                     : 'bg-slate-900/80 hover:bg-slate-800'
                 }`}
               >
-                🗺
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="16" rx="2" />
+                  <rect x="7" y="8" width="8" height="6" rx="1" />
+                </svg>
               </button>
               <button
                 onClick={toggleFullscreen}
@@ -798,6 +836,8 @@ export default function App() {
             onBatchChange={updateElements}
             showGrid={showGrid}
             showMinimap={showMinimap}
+            theme={theme}
+            snapEnabled={snapEnabled}
             view={view}
             onViewChange={setView}
             onLayer={moveLayer}

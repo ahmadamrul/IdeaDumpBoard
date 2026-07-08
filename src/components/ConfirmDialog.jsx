@@ -23,13 +23,13 @@ export default function ConfirmDialog({ dialog, onClose }) {
         if (e.target === e.currentTarget) onClose(false)
       }}
     >
-      <div className="w-80 rounded-md border border-slate-700 bg-slate-800 p-4 text-sm text-slate-200 shadow-xl">
+      <div className="w-80 rounded-md border border-slate-300 bg-white p-4 text-sm text-slate-700 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
         <p className="mb-4">{dialog.message}</p>
         <div className="flex justify-end gap-2">
           {isConfirm && (
             <button
               onClick={() => onClose(false)}
-              className="rounded-md bg-slate-700 px-3 py-1.5 text-sm font-medium hover:bg-slate-600"
+              className="rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600"
             >
               Cancel
             </button>

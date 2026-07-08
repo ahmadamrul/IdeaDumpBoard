@@ -1,5 +1,57 @@
 const COLORS = ['#f8fafc', '#f87171', '#fbbf24', '#34d399', '#60a5fa', '#c084fc']
 
+// Horseshoe magnet — the conventional "snap" metaphor.
+const MagnetIcon = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M6 3v7a6 6 0 0 0 12 0V3" />
+    <path d="M6 3h4M14 3h4M6 8h4M14 8h4" />
+  </svg>
+)
+
+// Sticky-note icon: a square with a folded bottom-right corner.
+const NoteIcon = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M4 4h16v11l-5 5H4z" />
+    <path d="M20 14h-6v6" />
+  </svg>
+)
+
+// Mini-map icon: an outer frame with a smaller inner rectangle (the viewport),
+// which reads clearly as a mini-map rather than the globe-like 🗺 emoji.
+const MapIcon = (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect x="3" y="4" width="18" height="16" rx="2" />
+    <rect x="7" y="8" width="8" height="6" rx="1" />
+  </svg>
+)
+
 export default function Toolbar({
   boardName,
   color,
@@ -30,6 +82,8 @@ export default function Toolbar({
   onToggleGrid,
   showMinimap,
   onToggleMinimap,
+  snapEnabled,
+  onToggleSnap,
   zoomPct,
   onZoomIn,
   onZoomOut,
@@ -40,7 +94,7 @@ export default function Toolbar({
   const btn =
     'rounded-md px-3 py-1.5 text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed'
   const iconBtn =
-    'flex h-8 min-w-8 items-center justify-center rounded-md bg-slate-800 px-2 text-sm hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed'
+    'flex h-8 min-w-8 items-center justify-center rounded-md bg-slate-200 px-2 text-sm hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed'
 
   const isBold = (selected?.fontStyle || '').includes('bold')
   const isItalic = (selected?.fontStyle || '').includes('italic')
@@ -49,8 +103,8 @@ export default function Toolbar({
     `${iconBtn} ${align === val ? 'ring-2 ring-indigo-400' : ''}`
 
   return (
-    <header className="flex flex-wrap items-center gap-2 border-b border-slate-800 bg-slate-900 px-4 py-2 text-slate-200">
-      <span className="mr-2 max-w-40 truncate text-sm font-semibold text-slate-100">
+    <header className="flex flex-wrap items-center gap-2 border-b border-slate-300 bg-white px-4 py-2 text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
+      <span className="mr-2 max-w-40 truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
         {boardName}
       </span>
       {selectionCount > 1 && (
@@ -70,16 +124,16 @@ export default function Toolbar({
         onClick={onAddSticky}
         title="Add sticky note"
       >
-        🟨 Note
+        <span className="inline-flex items-center gap-1">{NoteIcon} Note</span>
       </button>
       <button
-        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        className={`${btn} bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700`}
         onClick={onUploadClick}
       >
         ⬆ Image
       </button>
       <button
-        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        className={`${btn} bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700`}
         onClick={onAddFrame}
         title="Add frame to group ideas"
       >
@@ -89,7 +143,7 @@ export default function Toolbar({
         className={`${btn} ${
           connecting
             ? 'bg-indigo-600 text-white hover:bg-indigo-500'
-            : 'bg-slate-800 hover:bg-slate-700'
+            : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700'
         }`}
         onClick={onToggleConnect}
         title="Connect two elements with an arrow (Esc to cancel)"
@@ -114,14 +168,14 @@ export default function Toolbar({
           value={color}
           onChange={(e) => onColorChange(e.target.value)}
           title="Custom color"
-          className="h-6 w-6 cursor-pointer rounded border border-slate-700 bg-transparent p-0"
+          className="h-6 w-6 cursor-pointer rounded border border-slate-300 bg-transparent p-0 dark:border-slate-700"
         />
       </div>
 
       {/* Text formatting — active whenever at least one text element is selected */}
       {hasTextSelected && (
         <>
-          <div className="mx-1 h-6 w-px bg-slate-700" />
+          <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
           <div className="flex items-center gap-1">
             <button
               className={iconBtn}
@@ -130,7 +184,7 @@ export default function Toolbar({
             >
               A−
             </button>
-            <span className="w-6 text-center text-xs text-slate-400">
+            <span className="w-6 text-center text-xs text-slate-500 dark:text-slate-400">
               {selected?.fontSize}
             </span>
             <button
@@ -182,7 +236,7 @@ export default function Toolbar({
       {/* Layer order — for any selected element */}
       {hasSelection && (
         <>
-          <div className="mx-1 h-6 w-px bg-slate-700" />
+          <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
           <div className="flex items-center gap-1">
             <button
               className={iconBtn}
@@ -216,24 +270,24 @@ export default function Toolbar({
         </>
       )}
 
-      <div className="mx-1 h-6 w-px bg-slate-700" />
+      <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
 
       <button
-        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        className={`${btn} bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700`}
         onClick={onUndo}
         title="Undo (Ctrl+Z)"
       >
         ↶ Undo
       </button>
       <button
-        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        className={`${btn} bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700`}
         onClick={onRedo}
         title="Redo (Ctrl+Y)"
       >
         ↷ Redo
       </button>
       <button
-        className={`${btn} bg-slate-800 hover:bg-red-600`}
+        className={`${btn} bg-slate-200 hover:bg-red-500 hover:text-white dark:bg-slate-800 dark:hover:bg-red-600`}
         onClick={onDeleteSelected}
         disabled={!hasSelection}
         title="Delete selected (Del)"
@@ -241,7 +295,7 @@ export default function Toolbar({
         🗑 Delete
       </button>
       <button
-        className={`${btn} bg-slate-800 hover:bg-red-600`}
+        className={`${btn} bg-slate-200 hover:bg-red-500 hover:text-white dark:bg-slate-800 dark:hover:bg-red-600`}
         onClick={onClear}
       >
         Clear
@@ -250,7 +304,7 @@ export default function Toolbar({
         className={`${btn} ${
           showGrid
             ? 'bg-indigo-600 text-white hover:bg-indigo-500'
-            : 'bg-slate-800 hover:bg-slate-700'
+            : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700'
         }`}
         onClick={onToggleGrid}
         title="Toggle grid"
@@ -259,24 +313,37 @@ export default function Toolbar({
       </button>
       <button
         className={`${btn} ${
+          snapEnabled
+            ? 'bg-indigo-600 text-white hover:bg-indigo-500'
+            : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700'
+        }`}
+        onClick={onToggleSnap}
+        title={
+          snapEnabled ? 'Snap to elements: on' : 'Snap to elements: off'
+        }
+      >
+        <span className="inline-flex items-center gap-1">{MagnetIcon} Snap</span>
+      </button>
+      <button
+        className={`${btn} ${
           showMinimap
             ? 'bg-indigo-600 text-white hover:bg-indigo-500'
-            : 'bg-slate-800 hover:bg-slate-700'
+            : 'bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700'
         }`}
         onClick={onToggleMinimap}
         title="Toggle mini-map"
       >
-        🗺 Map
+        <span className="inline-flex items-center gap-1">{MapIcon} Map</span>
       </button>
 
-      <div className="mx-1 h-6 w-px bg-slate-700" />
+      <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
 
       <div className="flex items-center gap-1">
         <button className={iconBtn} onClick={onZoomOut} title="Zoom out">
           −
         </button>
         <button
-          className="w-12 rounded-md bg-slate-800 px-1 py-1.5 text-center text-xs text-slate-300 hover:bg-slate-700"
+          className="w-12 rounded-md bg-slate-200 px-1 py-1.5 text-center text-xs text-slate-600 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
           onClick={onZoomReset}
           title="Reset zoom"
         >
@@ -287,28 +354,28 @@ export default function Toolbar({
         </button>
       </div>
 
-      <div className="mx-1 h-6 w-px bg-slate-700" />
+      <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
 
       <button
-        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        className={`${btn} bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700`}
         onClick={onExportPng}
       >
         PNG
       </button>
       <button
-        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        className={`${btn} bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700`}
         onClick={onExportJson}
       >
         Export
       </button>
       <button
-        className={`${btn} bg-slate-800 hover:bg-slate-700`}
+        className={`${btn} bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700`}
         onClick={onImportClick}
       >
         Import
       </button>
 
-      <div className="mx-1 h-6 w-px bg-slate-700" />
+      <div className="mx-1 h-6 w-px bg-slate-300 dark:bg-slate-700" />
 
       <button
         className={`${iconBtn} ${isFullscreen ? 'ring-2 ring-indigo-400' : ''}`}

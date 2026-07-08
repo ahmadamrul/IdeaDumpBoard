@@ -23,11 +23,11 @@ export default function ContextMenu({ x, y, items, onClose }) {
     <div
       ref={ref}
       style={{ left: x, top: y }}
-      className="absolute z-50 min-w-44 rounded-md border border-slate-700 bg-slate-800 py-1 text-sm text-slate-200 shadow-xl"
+      className="absolute z-50 min-w-44 rounded-md border border-slate-300 bg-white py-1 text-sm text-slate-700 shadow-xl dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
     >
       {items.map((item, i) =>
         item.divider ? (
-          <div key={i} className="my-1 h-px bg-slate-700" />
+          <div key={i} className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
         ) : (
           <button
             key={item.label}
@@ -36,7 +36,7 @@ export default function ContextMenu({ x, y, items, onClose }) {
               onClose()
             }}
             disabled={item.disabled}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-100 disabled:opacity-40 disabled:hover:bg-transparent dark:hover:bg-slate-700"
           >
             <span className="w-4 text-center text-slate-400">{item.icon}</span>
             {item.label}
